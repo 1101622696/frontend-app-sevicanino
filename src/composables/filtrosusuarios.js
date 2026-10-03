@@ -1,62 +1,33 @@
-export const TIPOS_FILTRO = {
-  TODOS: 'todos',
-  FECHA: 'fecha de licencia',
-  VIAJES: 'viajes',
-  ESTADO: 'estado',
-  PERFIL: 'perfil',
-};
+import { filtroTodos, filtroPorCampo, filtroCiudadDirecta } from './filtrosComunes'
+import { aOpcionesFiltro } from '../utils/texto'
+import { PERFILES, ESTADOS_REGISTRO } from './catalogos'
 
-export const CONFIG_FILTROS = {
-  [TIPOS_FILTRO.TODOS]: {
-    titulo: 'Todos los Usuarios',
-    icono: 'user',
-    color: 'primary',
-    campoOrden: null,
-    etiquetaAsc: 'Ascendente',
-    etiquetaDesc: 'Descendente',
-    campoDatos: null
+// Solo el admin ve la lista de usuarios; el manejador ve "Mi perfil"
+export const FILTROS_USUARIOS = {
+  config: {
+    todos: filtroTodos('Todos los usuarios', 'group'),
+    perfil: filtroPorCampo({
+      campo: 'perfil',
+      titulo: 'Usuarios por perfil',
+      etiquetaChip: 'Perfil',
+      icono: 'badge',
+      color: 'purple',
+      opciones: aOpcionesFiltro(PERFILES),
+    }),
+    estado: filtroPorCampo({
+      campo: 'estado',
+      titulo: 'Usuarios por estado',
+      etiquetaChip: 'Estado',
+      icono: 'toggle_on',
+      color: 'green',
+      opciones: aOpcionesFiltro(ESTADOS_REGISTRO),
+    }),
+    ciudad: filtroCiudadDirecta('Usuarios por ciudad'),
   },
-  [TIPOS_FILTRO.FECHA]: {
-    titulo: 'Usuarios por Fecha de Licencia',
-    icono: 'event',
-    color: 'secondary',
-    campoOrden: 'fecha_vencimiento_licencia',
-    etiquetaAsc: 'Antiguas',
-    etiquetaDesc: 'Recientes', 
-    campoDatos: 'fecha_vencimiento_licencia'
+  opcionesLista: {
+    compararOrden: (a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'),
+    ordenInicial: 'asc',
+    etiquetasOrden: { asc: 'A → Z', desc: 'Z → A' },
+    camposBusqueda: ['nombre', 'email', 'cedula'],
   },
-  [TIPOS_FILTRO.VIAJES]: {
-    titulo: 'Usuarios por Viajes',
-    icono: 'alt_route',
-    color: 'accent',
-    campoOrden: 'viajes',
-    etiquetaAsc: 'Menos viajes',
-    etiquetaDesc: 'Más viajes',
-    campoDatos: 'viajes_realizados'
-  },
-  [TIPOS_FILTRO.ESTADO]: {
-    titulo: 'Usuarios por Estado',
-    icono: 'toggle_on',
-    color: 'green',
-    campoOrden: null,
-    campoDatos: 'estado',
-    esFiltroTexto: true,
-    opcionesFiltro: [
-      {valor: 'Activo', etiqueta: 'Activo'},
-      {valor: 'Inactivo', etiqueta: 'Inactivo'}
-    ]
-  },
-    [TIPOS_FILTRO.PERFIL]: {
-    titulo: 'Usuarios por Perfil',
-    icono: 'groups',
-    color: 'purple',
-    campoOrden: null,
-    campoDatos: 'perfil',
-    esFiltroTexto: true,
-    opcionesFiltro: [
-      { valor: 'conductor',  etiqueta: 'Conductor' },
-      { valor: 'administrador',  etiqueta: 'Administrador' },
-      { valor: 'propietario',    etiqueta: 'Propietario' },
-    ]
-  },
-};
+}

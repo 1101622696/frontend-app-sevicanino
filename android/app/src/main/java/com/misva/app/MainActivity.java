@@ -1,4 +1,4 @@
-package com.miljc.app;
+package com.misevicanino.app;
 
 import com.getcapacitor.BridgeActivity;
 

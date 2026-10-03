@@ -215,7 +215,7 @@ defineOptions({ name: 'LoginPage' })
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: url('https://i.postimg.cc/jqP7ssKC/Whats-App-Image-2026-04-18-at-8-53-59-PM.png')
+  background: url('https://i.postimg.cc/XqhbgbPB/sevicanino.png')
     no-repeat center;
   background-size: cover;
 }

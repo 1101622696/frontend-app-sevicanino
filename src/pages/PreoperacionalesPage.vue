@@ -878,7 +878,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useStorePreoperacionales } from '../stores/preoperacionales'
-import { useStoreViajes } from '../stores/viajes'
+import { useStoreVehiculos } from '../stores/vehiculos'
 import { useStoreUsuarios } from '../stores/usuarios'
 import { useQuasar } from 'quasar'
 import { guardarPendiente, guardarArchivosOffline } from '../composables/offlineDB'
@@ -900,7 +900,7 @@ const {
 } = useDriveVisor()
 
 const usePreoperacional = useStorePreoperacionales()
-const useViaje = useStoreViajes()
+const useVehiculo = useStoreVehiculos()
 const useUsuario = useStoreUsuarios()
 
 const perfilUsuario = computed(() => useUsuario.perfile)
@@ -1159,7 +1159,7 @@ async function cargarViajesPreoperacionales() {
     const placa = useUsuario.user?.placa_asignada || ''
 
     const [responseViajes, responsePreop] = await Promise.all([
-      useViaje.obtenerResumenPorPlaca(placa),
+      useVehiculo.obtenerResumenPorPlaca(placa),
       usePreoperacional.obtenerPreoperacionales(),
     ])
     // console.log('responseViajes', responseViajes)

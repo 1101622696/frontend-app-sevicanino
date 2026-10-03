@@ -1,18 +1,10 @@
 <template>
   <q-layout view="hHh LpR fFf">
-      <!-- <q-header elevated class="bg-[#003144]" style="padding-top: env(safe-area-inset-top)"> -->
-      <q-header elevated class="bg-[#00ff00]" style="padding-top: env(safe-area-inset-top)">
+      <!-- <q-header elevated class="bg-[#00ff00]" style="padding-top: env(safe-area-inset-top)"> -->
+<q-header elevated style="padding-top: env(safe-area-inset-top)">
       <q-toolbar>
         <q-btn flat round dense icon="menu" @click="toggleSideMenu" />
-        <q-toolbar-title>LJC</q-toolbar-title>
-        <!-- <q-btn
-          v-if="useUsuario.perfile !== 'piloto'"
-          flat
-          round
-          dense
-          icon="add_circle"
-          @click="mostrarFormulario = true"
-        /> -->
+        <q-toolbar-title>SeviCanino</q-toolbar-title>
           <q-btn
           flat
           round
@@ -23,24 +15,9 @@
       </q-toolbar>
     </q-header>
 
-    <!-- <q-dialog v-model="mostrarFormulario">
-      <q-card style="width: 700px">
-        <q-card-section>
-          <div class="text-h6">{{ esEdicion ? 'Editar' : 'Crear' }} Viaje</div>
-        </q-card-section>
-
-        <SolicitudForm
-          :datos="datosSolicitud"
-          :esEdicion="esEdicion"
-          @guardar="guardarCompletado"
-          @cancelar="mostrarFormulario = false"
-        />
-      </q-card>
-    </q-dialog> -->
-
     <q-drawer v-model="sideMenuOpen" show-if-above bordered>
       <q-list>
-        <q-item-label header>LJC APP</q-item-label>
+        <q-item-label header>SeviCanino APP</q-item-label>
         <EssentialLink v-for="link in filteredLinks" :key="link.title" v-bind="link" />
       </q-list>
     </q-drawer>
@@ -48,6 +25,7 @@
     <q-page-container class="bg-grey-1">
       <router-view />
     </q-page-container>
+    <VisorArchivos />
   </q-layout>
 </template>
 
@@ -60,6 +38,8 @@ import { storeToRefs } from 'pinia'
 import { useStoreUsuarios } from '../stores/usuarios'
 import useNotifications from 'src/composables/useNotifications'
 import { useRouter } from 'vue-router'
+import VisorArchivos from 'components/VisorArchivos.vue'
+import { limpiarCacheArchivos } from '../composables/useVisorArchivos'
 
 const router = useRouter()
 const useUsuario = useStoreUsuarios()
@@ -86,6 +66,7 @@ onMounted(async () => {
 })
 
 const logout = () => {
+  limpiarCacheArchivos()
   useUsuario.eliminarToken()
   localStorage.removeItem('email')
   localStorage.removeItem('fcm-token')

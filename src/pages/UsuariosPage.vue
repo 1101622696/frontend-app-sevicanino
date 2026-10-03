@@ -1,1588 +1,539 @@
 <template>
-  <!-- <q-page class="flex flex-center">
-    <q-card-section>
-      <div class="row items-center q-col-gutter-md">
-        <div class="col-12 col-md-auto">
-          <q-btn-group spread>
-            <q-btn
-              v-for="(config, tipo) in filtrosConfig"
-              :key="tipo"
-              :label="tipo === 'todos' ? 'Todos' : `Por ${config.titulo.split(' ').pop()}`"
-              :icon="config.icono"
-              :color="config.color"
-              @click="cargarListaPor(tipo)"
-              :outline="tipoLista !== tipo"
-            />
-          </q-btn-group>
-        </div>
+  <q-page class="bg-grey-2">
+    <!-- ════════ ADMIN: lista de usuarios ════════ -->
+    <q-pull-to-refresh v-if="useUsuario.esAdmin" color="primary" @refresh="refrescar">
+      <div class="q-pa-md">
+        <BarraFiltros
+          :filtros="filtrosVisibles"
+          :tipo-activo="tipoLista"
+          :opciones="opcionesFiltro"
+          :tiene-valor="tieneValor"
+          :opciones-orden="opcionesOrden"
+          v-model:valor="valorFiltro"
+          v-model:orden="orden"
+          v-model:busqueda="busqueda"
+          placeholder-busqueda="Buscar por nombre, correo o cédula"
+          class="q-mb-md"
+          @seleccionar="seleccionarFiltro"
+        />
 
-        <div class="col-12 col-md-auto" v-if="tipoLista !== 'todos' && !filtroActual.esFiltroTexto">
-          <q-btn-toggle
-            v-model="ordenActual"
-            toggle-color="primary"
-            :options="opcionesOrdenamiento"
-            @update:model-value="cargarUsuarios"
-          />
-        </div>
+        <EncabezadoLista
+          :titulo="filtroActual.titulo"
+          :detalle="etiquetaValorFiltro"
+          :icono="filtroActual.icono"
+          :color="filtroActual.color"
+          :total="listaFiltrada.length"
+        />
 
-        <div class="col-12 col-md-auto" v-if="filtroActual.esFiltroTexto">
-          <q-select
-            v-model="valorFiltroTexto"
-            :options="opcionesFiltroTexto"
-            option-value="valor"
-            option-label="etiqueta"
-            dense
-            outlined
-            emit-value
-            map-options
-            @update:model-value="actualizarValorFiltro"
+        <EstadoLista
+          :cargando="cargandoInicial"
+          :vacio="!cargandoInicial && !listaFiltrada.length"
+          :hay-filtros="hayFiltros"
+          icono="group"
+          texto-vacio="Aún no hay usuarios registrados"
+          texto-ayuda="Cree los usuarios de los manejadores de cada ciudad."
+          texto-accion="Crear usuario"
+          @accion="abrirCrear"
+          @limpiar="reiniciar"
+        />
+
+        <div v-if="!cargandoInicial" class="column q-gutter-y-sm lista-con-fab">
+          <TarjetaRegistro
+            v-for="usuario in listaFiltrada"
+            :key="usuario.email"
+            :titulo="usuario.nombre || usuario.email"
+            :subtitulo="usuario.email"
+            :lineas="[storeCiudades.nombreCiudad(usuario.ciudad_id)]"
+            :badges="[badgePerfil(usuario), badgeEstado(usuario)]"
+            :avatar="iniciales(usuario.nombre)"
+            v-bind="coloresPerfil(usuario.perfil)"
+            @click="verDetalle(usuario)"
           />
         </div>
       </div>
-    </q-card-section>
+    </q-pull-to-refresh>
 
-    <q-card-section>
-      <div class="text-h6 q-mb-md">
-        <q-icon :name="filtroActual.icono" :color="filtroActual.color" />
-        {{ filtroActual.titulo }}
-        <span v-if="filtroActual.esFiltroTexto && valorFiltroTexto">
-          - {{ obtenerEtiquetaFiltroTexto(valorFiltroTexto) }}
-        </span>
+    <!-- ════════ MANEJADOR: mi perfil ════════ -->
+    <div v-else class="q-pa-md mi-perfil">
+      <div v-if="cargando && !perfil" class="flex flex-center q-pa-xl">
+        <q-spinner color="primary" size="40px" />
       </div>
 
-      <q-list bordered separator>
-        <q-item
-          v-for="usuario in usuarios"
-          :key="usuario.email"
-          clickable
-          @click="verDetalles(usuario.email)"
-        >
-          <q-item-section>
-            <q-item-label>{{ usuario.nombre }} - {{ usuario.email }}</q-item-label>
-            <q-item-label caption v-if="usuario.valorFiltro !== undefined">
-              {{ obtenerEtiquetaValor(usuario.valorFiltro) }}
-            </q-item-label>
-          </q-item-section>
-        </q-item>
-      </q-list>
-    </q-card-section>
+      <template v-else-if="perfil">
+        <div class="column items-center text-center q-pt-md">
+          <q-avatar
+            size="88px"
+            v-bind="avatarGrande(perfil.perfil)"
+            class="text-h5 text-weight-medium"
+          >
+            {{ iniciales(perfil.nombre) }}
+          </q-avatar>
+          <div class="text-h6 q-mt-md">{{ perfil.nombre }}</div>
+          <div class="text-body2 text-grey-7">{{ perfil.email }}</div>
+          <q-badge v-bind="badgePerfilProps(perfil)" rounded class="q-mt-sm">
+            {{ badgePerfil(perfil).etiqueta }}
+          </q-badge>
+        </div>
 
-    <div>
-      <q-dialog v-model="mostrarDetalles" persistent>
-        <q-card style="min-width: 350px">
-          <q-card-section>
-            <div class="text-h6">Detalles del Usuario</div>
-          </q-card-section>
-
-          <q-card-section class="q-pt-none" v-if="detallesUsuario">
-            <div class="q-pa-md">
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Nombre:</div>
-                <div class="col-8">{{ detallesUsuario.nombre }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Perfil:</div>
-                <div class="col-8">{{ detallesUsuario.perfil }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Email:</div>
-                <div class="col-8">{{ detallesUsuario.email }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Estado:</div>
-                <div class="col-8">{{ detallesUsuario.estado }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Placa asignada:</div>
-                <div class="col-8">{{ detallesUsuario.placa_asignada }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Tipo de documento:</div>
-                <div class="col-8">{{ detallesUsuario.tipo_documento }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Número de documento:</div>
-                <div class="col-8">{{ detallesUsuario.documento }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Ciudad de expedición:</div>
-                <div class="col-8">{{ detallesUsuario.ciudad_expedicion }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Fecha de expedición:</div>
-                <div class="col-8">{{ detallesUsuario.fecha_expedicion }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">País de nacimiento:</div>
-                <div class="col-8">{{ detallesUsuario.pais_nacimiento }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Ciudad de nacimiento:</div>
-                <div class="col-8">{{ detallesUsuario.ciudad_nacimiento }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Fecha de nacimiento:</div>
-                <div class="col-8">{{ detallesUsuario.fecha_nacimiento }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Grupo sanguíneo:</div>
-                <div class="col-8">{{ detallesUsuario.grupo_sanguineo_rh }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Género:</div>
-                <div class="col-8">{{ detallesUsuario.genero }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Estado civil:</div>
-                <div class="col-8">{{ detallesUsuario.estado_civil }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Teléfono:</div>
-                <div class="col-8">{{ detallesUsuario.telefono }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Tipo de licencia:</div>
-                <div class="col-8">{{ detallesUsuario.tipo_licencia }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Número de licencia:</div>
-                <div class="col-8">{{ detallesUsuario.num_licencia }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Fecha de expedición:</div>
-                <div class="col-8">{{ detallesUsuario.fecha_expedicion_licencia }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Fecha vencimiento licencia:</div>
-                <div class="col-8">{{ detallesUsuario.fecha_vencimiento_licencia }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Viajes realizados:</div>
-                <div class="col-8">{{ detallesUsuario.viajes_realizados }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Banco:</div>
-                <div class="col-8">{{ detallesUsuario.banco }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Número de cuenta:</div>
-                <div class="col-8">{{ detallesUsuario.num_cuenta }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Salario Base:</div>
-                <div class="col-8">{{ detallesUsuario.salario_base }}</div>
-              </div>
-              <div class="row q-mb-md">
-                <div class="col-4 text-weight-bold">Seguridad Social:</div>
-                <div class="col-8">{{ detallesUsuario.sso }}</div>
-              </div>
-            </div>
-
-            <div class="row q-mb-md">
-              <div class="col-4 text-weight-bold">Activación:</div>
-              <div class="col-8">
-                <q-toggle
-                  v-model="isActive"
-                  :color="detallesUsuario.estado === 'activo' ? 'grey' : 'primary'"
-                  @update:model-value="cambiarEstado"
-                />
-              </div>
-            </div>
-            <q-card-actions align="right">
-              <q-btn class="option-button" @click="editar(detallesUsuario)">✏️</q-btn>
-
-              <template
-                v-if="
-                  (perfilUsuario === 'administrador' || perfilUsuario === 'propietario') &&
-                  detallesUsuario.perfil === 'conductor'
-                "
-              >
-                <q-btn
-                  color="teal"
-                  label="Calcular nómina"
-                  size="sm"
-                  @click="abrirCalcularNomina"
-                />
-                <q-btn color="blue" label="Pagar base" size="sm" @click="pagarSalario" />
-              </template>
-            </q-card-actions>
-          </q-card-section>
-
-          <q-card-actions align="right">
-            <q-btn flat label="Cerrar" color="primary" v-close-popup />
-          </q-card-actions>
+        <q-card flat bordered class="q-mt-lg mi-perfil__tarjeta">
+          <q-list separator>
+            <q-item v-for="campo in camposPerfil" :key="campo.etiqueta">
+              <q-item-section avatar>
+                <q-icon :name="campo.icono" color="grey-6" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>{{ campo.etiqueta }}</q-item-label>
+                <q-item-label>{{ campo.valor || '—' }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
         </q-card>
-      </q-dialog> -->
 
-  <q-page padding class="bg-grey-2">
-    <!-- Filtros -->
-    <div class="filter-bar q-mb-md">
-      <div class="filter-scroll row no-wrap q-gutter-x-sm q-pb-xs">
-        <q-chip
-          v-for="(config, tipo) in filtrosConfig"
-          :key="tipo"
-          clickable
-          :icon="config.icono"
-          :color="tipoLista === tipo ? 'primary' : 'grey-2'"
-          :text-color="tipoLista === tipo ? 'white' : 'grey-8'"
-          class="filter-chip"
-          @click="cargarListaPor(tipo)"
-        >
-          {{ tipo === 'todos' ? 'Todos' : config.titulo.split(' ').pop() }}
-        </q-chip>
-      </div>
-
-      <div
-        v-if="tipoLista !== 'todos' && !filtroActual.esFiltroTexto"
-        class="row no-wrap q-gutter-x-sm q-mt-sm"
-      >
-        <q-chip
-          v-for="op in opcionesOrdenamiento"
-          :key="op.value"
-          clickable
-          size="sm"
-          :color="ordenActual === op.value ? 'secondary' : 'transparent'"
-          :text-color="ordenActual === op.value ? 'white' : 'grey-7'"
-          :outline="ordenActual !== op.value"
-          @click="ordenActual = op.value; cargarUsuarios()"
-        >
-          {{ op.label }}
-        </q-chip>
-      </div>
-
-      <div v-if="filtroActual.esFiltroTexto" class="q-mt-sm">
-        <q-select
-          v-model="valorFiltroTexto"
-          :options="opcionesFiltroTexto"
-          option-value="valor"
-          option-label="etiqueta"
-          dense
-          outlined
+        <q-btn
+          unelevated
           rounded
-          emit-value
-          map-options
-          @update:model-value="actualizarValorFiltro"
+          no-caps
+          color="primary"
+          icon="edit"
+          label="Editar mis datos"
+          class="full-width q-mt-lg"
+          @click="abrirEditar(perfil)"
+        />
+        <!-- El botón de cambiar contraseña se agrega cuando hagamos el tema del hash -->
+
+        <div class="text-caption text-grey-7 text-center q-mt-md">
+          Para cambiar su correo, ciudad o contrato, comuníquese con el administrador.
+        </div>
+      </template>
+    </div>
+
+    <!-- Detalle (admin) -->
+    <DialogoDetalle
+      v-model="mostrarDetalle"
+      :titulo="detalle?.nombre || ''"
+      :subtitulo="detalle?.email || ''"
+      :avatar="iniciales(detalle?.nombre)"
+      v-bind="coloresPerfil(detalle?.perfil)"
+      :badges="detalle ? [badgePerfil(detalle), badgeEstado(detalle)] : []"
+      :campos="camposDetalle"
+      @editar="abrirEditar(detalle)"
+    >
+      <div v-if="detalle" class="fila-activacion row items-center q-mt-md">
+        <div class="col">
+          <div class="text-body2 text-weight-medium">Usuario activo</div>
+          <div class="text-caption text-grey-7">
+            {{
+              esMiCuenta(detalle)
+                ? 'No puede desactivar su propia cuenta.'
+                : 'Un usuario inactivo no puede iniciar sesión.'
+            }}
+          </div>
+        </div>
+        <q-toggle
+          :model-value="normalizar(detalle.estado) === 'activo'"
+          :disable="cambiandoEstado || esMiCuenta(detalle)"
+          color="positive"
+          @update:model-value="cambiarEstado"
         />
       </div>
-    </div>
+    </DialogoDetalle>
 
-    <!-- Encabezado -->
-    <div class="row items-center q-mb-sm">
-      <q-icon :name="filtroActual.icono" :color="filtroActual.color" size="20px" />
-      <span class="text-subtitle1 text-weight-medium q-ml-xs">
-        {{ filtroActual.titulo }}
-        <span v-if="filtroActual.esFiltroTexto && valorFiltroTexto">
-          · {{ obtenerEtiquetaFiltroTexto(valorFiltroTexto) }}
-        </span>
-      </span>
-      <q-badge color="blue-1" text-color="blue-9" class="q-ml-auto" rounded>
-        {{ usuarios.length }}
-      </q-badge>
-    </div>
+    <!-- Formulario -->
+    <DialogoFormulario
+      v-model="mostrarFormulario"
+      :titulo="tituloFormulario"
+      :subtitulo="esEdicion ? formulario.email : 'Complete los datos del usuario'"
+      :cargando="useUsuario.loading"
+      :texto-guardar="esEdicion ? 'Guardar cambios' : 'Crear usuario'"
+      :icono-guardar="esEdicion ? 'save' : 'person_add'"
+      @guardar="guardar"
+      @cerrar="resetear"
+    >
+      <div class="seccion-formulario">Datos personales</div>
 
-    <!-- Cards -->
-    <div class="q-gutter-y-sm">
-      <q-card
-        v-for="usuario in usuarios"
-        :key="usuario.email"
-        flat
-        bordered
-        class="usuario-card cursor-pointer"
-        @click="verDetalles(usuario.email)"
-      >
-        <q-card-section class="q-pa-md">
-          <div class="row items-center">
-            <div class="avatar-chip q-mr-md">{{ iniciales(usuario.nombre) }}</div>
-            <div class="col">
-              <div class="text-body2 text-weight-medium ellipsis">{{ usuario.nombre }}</div>
-              <div class="text-caption text-grey-6 ellipsis">{{ usuario.email }}</div>
-              <div class="row items-center q-gutter-x-sm q-mt-xs">
-                <q-badge
-                  :color="colorPerfil(usuario.perfil)"
-                  text-color="white"
-                  rounded
-                  class="text-caption"
-                >
-                  {{ usuario.perfil }}
-                </q-badge>
-                <q-badge
-                  :color="usuario.estado === 'activo' ? 'green-1' : 'grey-3'"
-                  :text-color="usuario.estado === 'activo' ? 'green-9' : 'grey-7'"
-                  rounded
-                  class="text-caption"
-                >
-                  {{ usuario.estado || 'sin estado' }}
-                </q-badge>
-              </div>
-            </div>
-            <q-icon name="chevron_right" color="grey-4" size="16px" />
-          </div>
-        </q-card-section>
-      </q-card>
-    </div>
+      <q-input v-model.trim="formulario.nombre" label="Nombre completo" outlined rounded dense bg-color="white" />
 
-    <!-- Dialog detalles -->
-    <q-dialog v-model="mostrarDetalles" persistent>
-      <q-card
-        style="min-width: 350px; max-width: 95vw; width: 500px; border-radius: 16px !important"
-      >
-        <!-- Header -->
-        <q-card-section class="q-pb-sm">
-          <div class="row items-center" v-if="detallesUsuario">
-            <div class="avatar-chip q-mr-md">{{ iniciales(detallesUsuario.nombre) }}</div>
-            <div class="col">
-              <div class="text-subtitle1 text-weight-medium">{{ detallesUsuario.nombre }}</div>
-              <div class="text-caption text-grey-6">{{ detallesUsuario.email }}</div>
-            </div>
-            <q-badge :color="colorPerfil(detallesUsuario.perfil)" text-color="white" rounded>
-              {{ detallesUsuario.perfil }}
-            </q-badge>
-          </div>
-        </q-card-section>
+      <q-input
+        v-model.trim="formulario.cedula"
+        label="Cédula"
+        inputmode="numeric"
+        outlined
+        rounded
+        dense
+        bg-color="white"
+      />
 
-        <q-separator />
+      <!-- Los demás campos solo los maneja el admin -->
+      <template v-if="useUsuario.esAdmin">
+        <div class="seccion-formulario">Acceso</div>
 
-        <q-card-section
-          class="q-pt-md"
-          v-if="detallesUsuario"
-          style="max-height: 65vh; overflow-y: auto"
+        <q-input
+          v-model.trim="formulario.email"
+          label="Correo electrónico"
+          type="email"
+          inputmode="email"
+          autocomplete="off"
+          :readonly="esEdicion"
+          :hint="esEdicion ? 'El correo es el identificador del usuario y no se puede cambiar.' : undefined"
+          outlined
+          rounded
+          dense
+          bg-color="white"
+        />
+
+        <q-input
+          v-if="!esEdicion"
+          v-model="formulario.password"
+          label="Contraseña"
+          :type="verPassword ? 'text' : 'password'"
+          autocomplete="new-password"
+          hint="Mínimo 6 caracteres"
+          outlined
+          rounded
+          dense
+          bg-color="white"
         >
-          <!-- Métricas rápidas -->
-          <div class="row q-gutter-sm q-mb-md">
-            <div class="metrica-chip col">
-              <div class="metrica-label">Viajes realizados</div>
-              <div class="metrica-valor">{{ detallesUsuario.viajes_realizados || '0' }}</div>
-            </div>
-            <div class="metrica-chip col">
-              <div class="metrica-label">Salario base</div>
-              <div class="metrica-valor">{{ formatPeso(detallesUsuario.salario_base) }}</div>
-            </div>
-            <div class="metrica-chip col">
-              <div class="metrica-label">Estado</div>
-              <div class="metrica-valor">{{ detallesUsuario.estado || '—' }}</div>
-            </div>
-          </div>
-
-          <!-- Sección: Contacto -->
-          <div class="seccion-titulo">Contacto</div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Teléfono</span>
-            <span class="detalle-valor">{{ detallesUsuario.telefono || '—' }}</span>
-          </div>
-          <div class="detalle-fila" v-if="detallesUsuario.placa_asignada">
-            <span class="detalle-label">Placa asignada</span>
-            <div class="placa-badge" style="font-size: 12px; padding: 2px 8px">
-              {{ detallesUsuario.placa_asignada }}
-            </div>
-          </div>
-
-          <!-- Sección: Documento -->
-          <div class="seccion-titulo q-mt-md">Documento de identidad</div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Tipo</span>
-            <span class="detalle-valor">{{ detallesUsuario.tipo_documento || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Número</span>
-            <span class="detalle-valor" style="font-family: monospace">{{
-              detallesUsuario.documento || '—'
-            }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Ciudad expedición</span>
-            <span class="detalle-valor">{{ detallesUsuario.ciudad_expedicion || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Fecha expedición</span>
-            <span class="detalle-valor">{{ formatFecha(detallesUsuario.fecha_expedicion) }}</span>
-          </div>
-
-          <!-- Sección: Datos personales -->
-          <div class="seccion-titulo q-mt-md">Datos personales</div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Fecha nacimiento</span>
-            <span class="detalle-valor">{{ formatFecha(detallesUsuario.fecha_nacimiento) }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Ciudad nacimiento</span>
-            <span class="detalle-valor">{{ detallesUsuario.ciudad_nacimiento || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">País nacimiento</span>
-            <span class="detalle-valor">{{ detallesUsuario.pais_nacimiento || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Género</span>
-            <span class="detalle-valor">{{ detallesUsuario.genero || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Estado civil</span>
-            <span class="detalle-valor">{{ detallesUsuario.estado_civil || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Grupo sanguíneo</span>
-            <span class="detalle-valor">{{ detallesUsuario.grupo_sanguineo_rh || '—' }}</span>
-          </div>
-
-          <!-- Sección: Licencia (solo si aplica) -->
-          <template v-if="detallesUsuario.tipo_licencia || detallesUsuario.num_licencia">
-            <div class="seccion-titulo q-mt-md">Licencia de conducción</div>
-            <div class="doc-legal-card">
-              <div class="row items-center q-mb-xs">
-                <span class="text-body2 text-weight-medium">
-                  {{ detallesUsuario.tipo_licencia || '—' }}
-                </span>
-                <q-space />
-                <span class="text-caption text-grey-6" style="font-family: monospace">
-                  {{ detallesUsuario.num_licencia || '—' }}
-                </span>
-              </div>
-              <div class="row">
-                <div class="col">
-                  <div class="metrica-label">Expedición</div>
-                  <div style="font-size: 12px">
-                    {{ formatFecha(detallesUsuario.fecha_expedicion_licencia) }}
-                  </div>
-                </div>
-                <div class="col">
-                  <div class="metrica-label">Vencimiento</div>
-                  <div style="font-size: 12px">
-                    {{ formatFecha(detallesUsuario.fecha_vencimiento_licencia) }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <!-- Sección: Banco -->
-          <div class="seccion-titulo q-mt-md">Información bancaria</div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Banco</span>
-            <span class="detalle-valor">{{ detallesUsuario.banco || '—' }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">N° cuenta</span>
-            <span class="detalle-valor" style="font-family: monospace">{{
-              detallesUsuario.num_cuenta || '—'
-            }}</span>
-          </div>
-          <div class="detalle-fila">
-            <span class="detalle-label">Seguridad social</span>
-            <span class="detalle-valor">{{ detallesUsuario.sso || '—' }}</span>
-          </div>
-
-          <q-separator class="q-my-md" />
-
-          <!-- Activación -->
-          <div class="detalle-fila">
-            <span class="detalle-label">Activación</span>
-            <q-toggle
-              v-model="isActive"
-              :color="detallesUsuario.estado === 'activo' ? 'grey' : 'primary'"
-              @update:model-value="cambiarEstado"
-            />
-          </div>
-        </q-card-section>
-
-        <q-separator />
-
-        <q-card-actions class="q-pa-md">
-          <template
-            v-if="
-              (perfilUsuario === 'administrador' || perfilUsuario === 'propietario') &&
-              detallesUsuario?.perfil === 'conductor'
-            "
-          >
-            <q-btn
-              outline
-              color="teal"
-              label="Nómina"
-              icon="calculate"
-              size="sm"
-              @click="abrirCalcularNomina"
-            />
-            <q-btn
-              outline
-              color="blue"
-              label="Pagar base"
-              icon="payments"
-              size="sm"
-              @click="pagarSalario"
+          <template #append>
+            <q-icon
+              :name="verPassword ? 'visibility_off' : 'visibility'"
+              class="cursor-pointer"
+              :aria-label="verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              @click="verPassword = !verPassword"
             />
           </template>
-          <q-space />
-          <q-btn flat round icon="edit" color="grey-7" @click="editar(detallesUsuario)" />
-          <q-btn flat label="Cerrar" color="primary" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+        </q-input>
 
-    <q-dialog v-model="dialogNomina" persistent>
-      <q-card style="min-width: 320px">
-        <q-card-section>
-          <div class="text-h6">Nómina — {{ detallesUsuario?.nombre }}</div>
-        </q-card-section>
-
-        <q-card-section class="q-pt-none">
-          <q-input filled v-model="mesNomina" type="month" label="Mes" :dense="dense" />
-          <q-btn
-            color="teal"
-            label="Calcular"
-            class="q-mt-md full-width"
-            @click="calcularNomina"
-            :loading="cargandoNomina"
+        <div>
+          <div class="text-caption text-grey-7 q-mb-xs q-px-sm">Perfil</div>
+          <q-btn-toggle
+            v-model="formulario.perfil"
+            :options="OPCIONES_PERFIL"
+            :disable="esEdicion && esMiCuenta(formulario)"
+            spread
+            no-caps
+            rounded
+            unelevated
+            color="white"
+            text-color="grey-8"
+            toggle-color="primary"
+            class="toggle-borde"
           />
-        </q-card-section>
-
-        <!-- Resultado del cálculo -->
-        <q-card-section v-if="calculoNomina" class="q-pt-none">
-          <q-separator class="q-mb-md" />
-          <div class="text-subtitle2 q-mb-sm">Resumen</div>
-          <div class="row q-mb-xs">
-            <div class="col-7 text-caption text-weight-bold">Viajes del mes:</div>
-            <div class="col-5 text-caption">{{ calculoNomina.total_viajes_mes }}</div>
+          <div v-if="esEdicion && esMiCuenta(formulario)" class="text-caption text-grey-7 q-mt-xs q-px-sm">
+            No puede cambiar el perfil de su propia cuenta.
           </div>
-          <div class="row q-mb-xs">
-            <div class="col-7 text-caption text-weight-bold">10% total:</div>
-            <div class="col-5 text-caption">
-              {{ formatearPesos(calculoNomina.diez_pcto_total_mes) }}
-            </div>
-          </div>
-          <div class="row q-mb-xs">
-            <div class="col-7 text-caption text-weight-bold">Saldo anticipo:</div>
-            <div class="col-5 text-caption">
-              {{ formatearPesos(calculoNomina.saldo_anticipo_total_mes) }}
-            </div>
-          </div>
-          <div class="row q-mb-xs">
-            <div class="col-7 text-caption text-weight-bold">Préstamos pendientes:</div>
-            <div class="col-5 text-caption">
-              {{ formatearPesos(calculoNomina.total_prestamos_pendientes) }}
-            </div>
-          </div>
-          <q-separator class="q-my-sm" />
-          <div class="row">
-            <div class="col-7 text-weight-bold">Total a pagar:</div>
-            <div
-              class="col-5 text-weight-bold"
-              :class="calculoNomina.total_nomina >= 0 ? 'text-green' : 'text-red'"
-            >
-              {{ formatearPesos(calculoNomina.total_nomina) }}
-            </div>
-          </div>
+        </div>
 
-          <q-btn
-            color="green"
-            label="Aprobar y pagar nómina"
-            class="q-mt-md full-width"
-            @click="aprobarNomina"
-            :loading="cargandoNomina"
-          />
-        </q-card-section>
+        <div class="seccion-formulario">Asignación</div>
 
-        <q-card-actions align="right">
-          <q-btn flat label="Cerrar" color="primary" @click="dialogNomina = false" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+        <q-select
+          v-model="formulario.ciudad_id"
+          :options="storeCiudades.opcionesCiudades"
+          label="Ciudad"
+          emit-value
+          map-options
+          outlined
+          rounded
+          dense
+          bg-color="white"
+        />
 
-    <!-- <q-dialog v-model="alert" persistent maximized> -->
-    <q-dialog v-model="alert" persistent>
-      <q-card class="bg-grey-2">
-        <!-- HEADER -->
-        <q-card-section class="bg-primary text-white">
-          <div class="text-h6 text-weight-bold">
-            {{ accion == 1 ? 'Agregar Usuario' : 'Editar Usuario' }}
-          </div>
-          <div class="text-caption">Complete la información del usuario</div>
-        </q-card-section>
+        <q-input v-model.trim="formulario.contrato" label="Contrato" outlined rounded dense bg-color="white" />
+      </template>
+    </DialogoFormulario>
 
-        <q-card-section class="q-pa-md">
-          <!-- ================= DATOS PRINCIPALES ================= -->
-          <q-card flat bordered class="rounded-borders q-mb-md">
-            <q-card-section>
-              <div class="text-subtitle1 text-primary text-weight-bold q-mb-md">
-                Datos principales
-              </div>
-
-              <div class="row q-col-gutter-md">
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.nombre"
-                    label="Nombre completo"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    type="email"
-                    v-model.trim="formulario.email"
-                    label="Correo electrónico"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    type="password"
-                    v-model.trim="formulario.password"
-                    label="Contraseña"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.perfil"
-                    label="Perfil"
-                    :options="perfilOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.placa_asignada"
-                    label="Placas asignadas"
-                    :options="placasOptions"
-                    multiple
-                    use-chips
-                    dense
-                  />
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
-
-          <!-- ================= DOCUMENTO ================= -->
-          <q-card flat bordered class="rounded-borders q-mb-md">
-            <q-card-section>
-              <div class="text-subtitle1 text-primary text-weight-bold q-mb-md">
-                Documento de identidad
-              </div>
-
-              <div class="row q-col-gutter-md">
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.tipo_documento"
-                    label="Tipo de documento"
-                    :options="tipodocOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.documento"
-                    label="Número de documento"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.ciudad_expedicion"
-                    label="Ciudad de expedición"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <div class="text-caption text-grey-7 q-mb-xs">Fecha de expedición</div>
-
-                  <q-date
-                    v-model="formulario.fecha_expedicion"
-                    minimal
-                    bordered
-                    class="rounded-borders full-width"
-                  />
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
-
-          <!-- ================= INFORMACIÓN PERSONAL ================= -->
-          <q-card flat bordered class="rounded-borders q-mb-md">
-            <q-card-section>
-              <div class="text-subtitle1 text-primary text-weight-bold q-mb-md">
-                Información personal
-              </div>
-
-              <div class="row q-col-gutter-md">
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.pais_nacimiento"
-                    label="País de nacimiento"
-                    :options="paisOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.ciudad_nacimiento"
-                    label="Ciudad de nacimiento"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <div class="text-caption text-grey-7 q-mb-xs">Fecha de nacimiento</div>
-
-                  <q-date
-                    v-model="formulario.fecha_nacimiento"
-                    minimal
-                    bordered
-                    class="rounded-borders full-width"
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.grupo_sanguineo_rh"
-                    label="Grupo sanguíneo"
-                    :options="rhOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.genero"
-                    label="Género"
-                    :options="generoOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.estado_civil"
-                    label="Estado civil"
-                    :options="estadocivilOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.telefono"
-                    label="Teléfono"
-                    dense
-                  />
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
-
-          <!-- ================= LICENCIA ================= -->
-          <q-card flat bordered class="rounded-borders q-mb-md">
-            <q-card-section>
-              <div class="text-subtitle1 text-primary text-weight-bold q-mb-md">
-                Información de licencia
-              </div>
-
-              <div class="row q-col-gutter-md">
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.tipo_licencia"
-                    label="Tipo de licencia"
-                    :options="tipolicenciaOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.num_licencia"
-                    label="Número de licencia"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <div class="text-caption text-grey-7 q-mb-xs">Fecha expedición licencia</div>
-
-                  <q-date
-                    v-model="formulario.fecha_expedicion_licencia"
-                    minimal
-                    bordered
-                    class="rounded-borders full-width"
-                  />
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
-
-          <!-- ================= INFORMACIÓN BANCARIA ================= -->
-          <q-card flat bordered class="rounded-borders q-mb-md">
-            <q-card-section>
-              <div class="text-subtitle1 text-primary text-weight-bold q-mb-md">
-                Información bancaria
-              </div>
-
-              <div class="row q-col-gutter-md">
-                <div class="col-12">
-                  <q-select
-                    outlined
-                    rounded
-                    v-model="formulario.banco"
-                    label="Banco"
-                    :options="bancoOptions"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model.trim="formulario.num_cuenta"
-                    label="Número de cuenta"
-                    dense
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model="salariobaseFormatted"
-                    label="Salario base"
-                    dense
-                    prefix="$"
-                    @update:model-value="formatearSalarioBase"
-                  />
-                </div>
-
-                <div class="col-12">
-                  <q-input
-                    outlined
-                    rounded
-                    v-model="ssoFormatted"
-                    label="Seguridad social"
-                    prefix="$"
-                    dense
-                    @update:model-value="formatearSSO"
-                  />
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
-        </q-card-section>
-
-        <!-- BOTONES -->
-        <q-card-actions class="bg-white q-pa-md" align="between">
-          <q-btn flat color="grey-8" label="Cerrar" icon="close" @click="cerrar()" />
-
-          <q-btn unelevated rounded color="primary" :loading="useUsuario.loading" @click="guardar">
-            <q-icon :name="accion === 1 ? 'person_add' : 'edit'" class="q-mr-sm" />
-
-            {{ accion === 1 ? 'Agregar usuario' : 'Actualizar usuario' }}
-
-            <template v-slot:loading>
-              <q-spinner color="white" size="1em" />
-            </template>
-          </q-btn>
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-    <!-- </div> -->
-
-    <!-- <q-btn color="primary" :label="'Registrar Usuario'" class="q-mt-md" @click="abrir" /> -->
-
-    <q-page-sticky position="bottom-right" :offset="[18, 18]">
-      <q-btn fab icon="add" color="primary" @click="abrir" />
+    <q-page-sticky v-if="useUsuario.esAdmin" position="bottom-right" :offset="[18, 18]">
+      <q-btn fab icon="person_add" color="primary" aria-label="Crear usuario" @click="abrirCrear" />
     </q-page-sticky>
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useStoreUsuarios } from '../stores/usuarios'
-import { useStoreVehiculos } from '../stores/vehiculos'
-import { useStoreNominas } from '../stores/nomina'
-import { useQuasar } from 'quasar'
-import { TIPOS_FILTRO, CONFIG_FILTROS } from '../composables/filtrosusuarios'
+import { useStoreCiudades } from '../stores/ciudades'
+import { useFiltrosLista } from '../composables/useFiltrosLista'
+import { FILTROS_USUARIOS } from '../composables/filtrosusuarios'
+import { PERFILES } from '../composables/catalogos'
+import { capitalizar, iniciales, normalizar } from '../utils/texto'
+import { validarRequeridos } from '../utils/formulario'
+
+import BarraFiltros from '../components/BarraFiltros.vue'
+import EncabezadoLista from '../components/EncabezadoLista.vue'
+import EstadoLista from '../components/EstadoLista.vue'
+import TarjetaRegistro from '../components/TarjetaRegistro.vue'
+import DialogoDetalle from '../components/DialogoDetalle.vue'
+import DialogoFormulario from '../components/DialogoFormulario.vue'
+
+defineOptions({ name: 'UsuariosPage' })
 
 const useUsuario = useStoreUsuarios()
-const useVehiculo = useStoreVehiculos()
-const alert = ref(false)
-const accion = ref(1)
-const $q = useQuasar()
+const storeCiudades = useStoreCiudades()
 
-const useNomina = useStoreNominas()
-const dialogNomina = ref(false)
-const mesNomina = ref('')
-const calculoNomina = ref(null)
-const cargandoNomina = ref(false)
+const OPCIONES_PERFIL = PERFILES.map((valor) => ({ label: capitalizar(valor), value: valor }))
+const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const salariobaseFormatted = ref('')
-const ssoFormatted = ref('')
-
-function formatearSalarioBase(val) {
-  salariobaseFormatted.value = formatearNumero(val)
-  formulario.value.salario_base = Number(salariobaseFormatted.value.replace(/\./g, ''))
-}
-
-function formatearSSO(val) {
-  ssoFormatted.value = formatearNumero(val)
-  formulario.value.sso = Number(ssoFormatted.value.replace(/\./g, ''))
-}
-
-function formatearNumero(valor) {
-  if (!valor) return ''
-  const limpio = valor.toString().replace(/\D/g, '')
-  return new Intl.NumberFormat('es-CO').format(limpio)
-}
-
-const estadoInicial = {
-  nombre: '',
-  email: '',
-  password: '',
-  perfil: '',
-  placa_asignada: [],
-  tipo_documento: '',
-  documento: '',
-  ciudad_expedicion: '',
-  fecha_expedicion: '',
-  pais_nacimiento: '',
-  ciudad_nacimiento: '',
-  fecha_nacimiento: '',
-  grupo_sanguineo_rh: '',
-  genero: '',
-  estado_civil: '',
-  telefono: '',
-  tipo_licencia: '',
-  num_licencia: '',
-  fecha_expedicion_licencia: '',
-  fecha_vencimiento_licencia: '',
-  viajes_realizados: '',
-  banco: '',
-  num_cuenta: '',
-  salario_base: '',
-  sso: '',
-}
-
-const formulario = ref({ ...estadoInicial })
-const cargando = ref(false)
-
-const tipoLista = ref(TIPOS_FILTRO.TODOS)
-const ordenActual = ref('desc')
+// ── Datos ──
+// Admin: todos los usuarios. Manejador: el backend devuelve solo el suyo.
 const usuarios = ref([])
-const valorFiltroTexto = ref(null)
+const cargando = ref(false)
+const cargandoInicial = computed(() => cargando.value && !usuarios.value.length)
 
-const detallesUsuario = ref(null)
-const mostrarDetalles = ref(false)
+const perfil = computed(() => {
+  if (useUsuario.esAdmin) return null
+  return usuarios.value[0] || (useUsuario.user?.email ? useUsuario.user : null)
+})
 
-const perfilOptions = ['administrador', 'conductor', 'propietario']
-
-const perfilUsuario = computed(() => useUsuario.perfile)
-
-const placasOptions = ref([])
-
-const tipodocOptions = ['CC', 'TI', 'CE', 'Passport', 'PTP']
-
-const paisOptions = ['Colombia', 'Venezuela', 'Ecuador']
-
-const rhOptions = ['o+', 'o-', 'A+']
-
-const generoOptions = ['Masculino', 'Femenino', 'Otro']
-
-const estadocivilOptions = ['Soltero', 'Casado', 'Divorciado', 'Unión libre']
-
-const tipolicenciaOptions = ['A1', 'B1', 'C1', 'C3']
-
-const bancoOptions = ['Bancolombia', 'Bogotá', 'NU', 'Nequi', 'BBVA']
-
-async function cargarPlacas() {
-  try {
-    const response = await useVehiculo.obtenerVehiculos()
-
-    if (!Array.isArray(response)) {
-      placasOptions.value = []
-      return
-    }
-
-    // Traer todas las placas
-    placasOptions.value = response.map((v) => v.placa)
-  } catch (error) {
-    console.error('Error cargando placas:', error)
-    placasOptions.value = []
-  }
-}
-
-function abrir() {
-  accion.value = 1
-  alert.value = true
-}
-
-function cerrar() {
-  alert.value = false
-  resetearFormulario()
-}
-
-async function guardar() {
+async function cargar() {
   cargando.value = true
-
-  if (!validar()) {
-    cargando.value = false
-    return
-  }
-
   try {
-    const dataEnviar = {
-      ...formulario.value,
-
-      placa_asignada: Array.isArray(formulario.value.placa_asignada)
-        ? formulario.value.placa_asignada.join(',')
-        : formulario.value.placa_asignada,
-    }
-
-    let response
-
-    if (accion.value === 2) {
-      response = await useUsuario.putUsuarios(formulario.value.email, dataEnviar)
-    } else {
-      response = await useUsuario.postUsuario(dataEnviar)
-    }
-
-    console.log('Respuesta exitosa:', response)
-
-    cerrar()
-    cargarUsuarios()
-    resetearFormulario()
-  } catch (error) {
-    console.error('Error completo:', error)
-    mostrarMensajeError('Error al guardar el usuario')
+    usuarios.value = await useUsuario.listarUsuario()
   } finally {
     cargando.value = false
   }
 }
 
-function editar(usuario) {
-  accion.value = 2
-
-  formulario.value = {
-    ...estadoInicial,
-    ...usuario,
-    placa_asignada: usuario.placa_asignada ? usuario.placa_asignada.split(',') : [],
-  }
-
-  salariobaseFormatted.value = formatearNumero(usuario.salario_base || 0)
-  ssoFormatted.value = formatearNumero(usuario.sso || 0)
-
-  alert.value = true
+async function refrescar(terminar) {
+  await Promise.all([cargar(), storeCiudades.obtenerCiudades({ forzar: true })])
+  terminar()
 }
 
-function validar() {
-  let verificado = true
+const esMiCuenta = (usuario) => normalizar(usuario?.email) === normalizar(useUsuario.emailUsuario)
 
-  const { nombre, password, perfil, email, placa_asignada, documento } = formulario.value
+// ── Filtros (solo admin) ──
+const {
+  tipoLista,
+  valorFiltro,
+  orden,
+  busqueda,
+  filtrosVisibles,
+  filtroActual,
+  tieneValor,
+  opcionesFiltro,
+  etiquetaValorFiltro,
+  opcionesOrden,
+  listaFiltrada,
+  seleccionarFiltro,
+  reiniciar,
+} = useFiltrosLista(FILTROS_USUARIOS.config, usuarios, {
+  ...FILTROS_USUARIOS.opcionesLista,
+  esAdmin: () => useUsuario.esAdmin,
+})
 
-  if (!nombre) {
-    mostrarMensajeError('Diligencie el nombre')
-    verificado = false
-  }
+const hayFiltros = computed(() => tipoLista.value !== 'todos' || Boolean(busqueda.value))
 
-  if (accion.value === 1 && !password) {
-    mostrarMensajeError('Diligencie una contraseña')
-    verificado = false
-  }
+// ── Presentación ──
+const coloresPerfil = (perfilUsuario) =>
+  perfilUsuario === 'administrador'
+    ? { colorAvatar: 'indigo-1', colorTextoAvatar: 'indigo-9' }
+    : { colorAvatar: 'purple-1', colorTextoAvatar: 'purple-9' }
 
-  if (!perfil) {
-    mostrarMensajeError('Seleccione el perfil')
-    verificado = false
-  }
-
-  if (!email) {
-    mostrarMensajeError('Diligencie el email')
-    verificado = false
-  }
-
-  if (!placa_asignada || placa_asignada.length === 0) {
-    mostrarMensajeError('Diligencie la placa asignada')
-    verificado = false
-  }
-
-  if (!documento) {
-    mostrarMensajeError('Diligencie el número de documento')
-    verificado = false
-  }
-
-  return verificado
+const avatarGrande = (perfilUsuario) => {
+  const colores = coloresPerfil(perfilUsuario)
+  return { color: colores.colorAvatar, textColor: colores.colorTextoAvatar }
 }
 
-function mostrarMensajeError(mensaje) {
-  $q.notify({
-    type: 'negative',
-    message: mensaje,
-    position: 'bottom-right',
-  })
+const badgePerfil = (usuario) => ({
+  etiqueta: capitalizar(usuario?.perfil) || 'Sin perfil',
+  color: usuario?.perfil === 'administrador' ? 'indigo-1' : 'purple-1',
+  textColor: usuario?.perfil === 'administrador' ? 'indigo-9' : 'purple-9',
+})
+
+const badgePerfilProps = (usuario) => {
+  const badge = badgePerfil(usuario)
+  return { color: badge.color, textColor: badge.textColor }
 }
 
-async function verDetalles(email) {
-  try {
-    const detalle = await useUsuario.listardatosUsuario(email)
-    // console.log('Detalles obtenidos:', detalle)
+const badgeEstado = (usuario) =>
+  normalizar(usuario?.estado) === 'activo'
+    ? { etiqueta: 'Activo', color: 'green-1', textColor: 'green-9' }
+    : { etiqueta: usuario?.estado ? capitalizar(usuario.estado) : 'Sin estado', color: 'grey-3', textColor: 'grey-7' }
 
-    if (detalle) {
-      detallesUsuario.value = {
-        nombre: detalle['nombre'] || '',
-        email: detalle['email'] || '',
-        perfil: detalle['perfil'] || '',
-        placa_asignada: detalle['placa_asignada'] || '',
-        tipo_documento: detalle['tipo_documento'] || '',
-        documento: detalle['documento'] || '',
-        ciudad_expedicion: detalle['ciudad_expedicion'] || '',
-        fecha_expedicion: detalle['fecha_expedicion'] || '',
-        pais_nacimiento: detalle['pais_nacimiento'] || '',
-        ciudad_nacimiento: detalle['ciudad_nacimiento'] || '',
-        fecha_nacimiento: detalle['fecha_nacimiento'] || '',
-        grupo_sanguineo_rh: detalle['grupo_sanguineo_rh'] || '',
-        genero: detalle['genero'] || '',
-        estado_civil: detalle['estado_civil'] || '',
-        telefono: detalle['telefono'] || '',
-        tipo_licencia: detalle['tipo_licencia'] || '',
-        num_licencia: detalle['num_licencia'] || '',
-        fecha_expedicion_licencia: detalle['fecha_expedicion_licencia'] || '',
-        fecha_vencimiento_licencia: detalle['fecha_vencimiento_licencia'] || '',
-        viajes_realizados: detalle['viajes_realizados'] || '',
-        banco: detalle['banco'] || '',
-        num_cuenta: detalle['num_cuenta'] || '',
-        salario_base: detalle['salario_base'] || '',
-        sso: detalle['sso'] || '',
-        estado: detalle['estado'] || '',
-      }
-      mostrarDetalles.value = true
-    } else {
-      console.error('No se pudieron obtener los detalles')
-    }
-  } catch (error) {
-    console.error('Error al obtener detalles:', error)
-  }
-}
-
-const filtrosConfig = computed(() => CONFIG_FILTROS)
-
-const filtroActual = computed(() => CONFIG_FILTROS[tipoLista.value])
-
-const opcionesOrdenamiento = computed(() => {
-  if (tipoLista.value === TIPOS_FILTRO.TODOS) return []
-
+const camposPerfil = computed(() => {
+  const p = perfil.value
+  if (!p) return []
   return [
-    { label: filtroActual.value.etiquetaDesc, value: 'desc' },
-    { label: filtroActual.value.etiquetaAsc, value: 'asc' },
+    { etiqueta: 'Cédula', valor: p.cedula, icono: 'badge' },
+    { etiqueta: 'Ciudad', valor: storeCiudades.nombreCiudad(p.ciudad_id), icono: 'location_city' },
+    { etiqueta: 'Contrato', valor: p.contrato, icono: 'description' },
   ]
 })
 
-watch(tipoLista, (newValue) => {
-  const filtro = CONFIG_FILTROS[newValue]
-  if (filtro.esFiltroTexto && filtro.opcionesFiltro?.length > 0) {
-    valorFiltroTexto.value = filtro.opcionesFiltro[0].valor
-  } else {
-    valorFiltroTexto.value = null
-  }
+// ── Detalle (admin) ──
+const mostrarDetalle = ref(false)
+const detalle = ref(null)
+const cambiandoEstado = ref(false)
+
+function verDetalle(usuario) {
+  detalle.value = { ...usuario }
+  mostrarDetalle.value = true
+}
+
+const camposDetalle = computed(() => {
+  const d = detalle.value
+  if (!d) return []
+  return [
+    { etiqueta: 'Cédula', valor: d.cedula },
+    { etiqueta: 'Ciudad', valor: storeCiudades.nombreCiudad(d.ciudad_id) },
+    { etiqueta: 'Contrato', valor: d.contrato, completo: true },
+  ]
 })
 
-function cargarListaPor(tipo) {
-  tipoLista.value = tipo
-  ordenActual.value = 'desc'
-
-  const filtro = CONFIG_FILTROS[tipo]
-
-  if (filtro.esFiltroTexto && filtro.opcionesFiltro?.length > 0) {
-    valorFiltroTexto.value = filtro.opcionesFiltro[0].valor
-  } else {
-    valorFiltroTexto.value = null
-  }
-
-  cargarUsuarios()
-}
-
-function actualizarValorFiltro(nuevoValor) {
-  valorFiltroTexto.value = nuevoValor
-  cargarUsuarios()
-}
-
-// function obtenerEtiquetaValor(valor) {
-//   if (tipoLista.value === TIPOS_FILTRO.PERFIL) {
-//     return `${valor}`
-//   } else if (tipoLista.value === TIPOS_FILTRO.ESTADO) {
-//     return `${valor}`
-//   }
-//   return valor
-// }
-
-function obtenerEtiquetaFiltroTexto(valor) {
-  if (filtroActual.value.esFiltroTexto && filtroActual.value.opcionesFiltro) {
-    const opcion = filtroActual.value.opcionesFiltro.find((opt) => opt.valor === valor)
-    return opcion ? opcion.etiqueta : valor
-  }
-  return valor
-}
-
-const opcionesFiltroTexto = computed(() => {
-  if (tipoLista.value && filtroActual.value && filtroActual.value.esFiltroTexto) {
-    return filtroActual.value.opcionesFiltro || []
-  }
-  return []
-})
-
-async function cargarUsuarios() {
+async function cambiarEstado(activar) {
+  if (!detalle.value || esMiCuenta(detalle.value)) return
+  cambiandoEstado.value = true
   try {
-    let response
-
-    // conductor -> solo él
-    if (perfilUsuario.value === 'conductor') {
-      response = [await useUsuario.obtenerUsuariosPorEmail(useUsuario.user.email)]
-    }
-
-    // propietario -> conductores de sus placas
-    else if (perfilUsuario.value === 'propietario') {
-      response = await useUsuario.obtenerUsuariosPorPropietario(useUsuario.user.email)
-    }
-
-    // filtros
-    else if (filtroActual.value?.esFiltroTexto) {
-      response = await useUsuario.obtenerUsuariosFiltrados(
-        filtroActual.value.campoDatos,
-        valorFiltroTexto.value,
-      )
-    }
-
-    // ordenamientos
-    else if (tipoLista.value !== TIPOS_FILTRO.TODOS) {
-      response = await useUsuario.obtenerUsuariosOrdenados(
-        filtroActual.value.campoOrden,
-        ordenActual.value,
-      )
-    }
-
-    // admin
-    else {
-      response = await useUsuario.listarUsuario()
-    }
-
-    if (Array.isArray(response)) {
-      usuarios.value = response.map((item) => {
-        const result = {
-          nombre: item['nombre'] || '',
-          email: item['email'] || '',
-          perfil: item['perfil'] || '',
-          estado: item['estado'] || '',
-        }
-
-        const campoDatos = filtroActual.value?.campoDatos
-
-        if (campoDatos && item[campoDatos] !== undefined) {
-          result.valorFiltro = item[campoDatos]
-        }
-
-        return result
-      })
+    if (activar) {
+      await useUsuario.putActivarUsuario(detalle.value.email)
     } else {
-      usuarios.value = []
+      await useUsuario.putInactivarUsuario(detalle.value.email)
     }
-  } catch (error) {
-    console.error(error)
-    usuarios.value = []
+    detalle.value.estado = activar ? 'activo' : 'inactivo'
+    await cargar()
+  } catch {
+    // el store ya notificó
+  } finally {
+    cambiandoEstado.value = false
+  }
+}
+
+// ── Formulario ──
+const mostrarFormulario = ref(false)
+const esEdicion = ref(false)
+const verPassword = ref(false)
+
+const nuevoFormulario = () => ({
+  nombre: '',
+  cedula: '',
+  email: '',
+  password: '',
+  perfil: 'manejador',
+  ciudad_id: '',
+  contrato: '',
+})
+
+const formulario = ref(nuevoFormulario())
+
+const tituloFormulario = computed(() => {
+  if (!esEdicion.value) return 'Crear usuario'
+  return useUsuario.esAdmin ? 'Editar usuario' : 'Editar mis datos'
+})
+
+function abrirCrear() {
+  esEdicion.value = false
+  verPassword.value = false
+  formulario.value = nuevoFormulario()
+  mostrarFormulario.value = true
+}
+
+function abrirEditar(usuario) {
+  if (!usuario) return
+  esEdicion.value = true
+  const base = nuevoFormulario()
+  Object.keys(base).forEach((clave) => {
+    if (usuario[clave] !== undefined) base[clave] = usuario[clave]
+  })
+  base.password = ''
+  formulario.value = base
+  mostrarFormulario.value = true
+}
+
+function resetear() {
+  formulario.value = nuevoFormulario()
+  esEdicion.value = false
+  verPassword.value = false
+}
+
+function reglasValidacion() {
+  const basicas = [
+    { campo: 'nombre', mensaje: 'Escriba el nombre completo' },
+    { campo: 'cedula', mensaje: 'Escriba la cédula' },
+  ]
+  if (!useUsuario.esAdmin) return basicas
+
+  const admin = [
+    ...basicas,
+    { campo: 'perfil', mensaje: 'Seleccione el perfil' },
+    { campo: 'ciudad_id', mensaje: 'Seleccione la ciudad' },
+  ]
+  if (esEdicion.value) return admin
+
+  return [
+    ...admin,
+    { campo: 'email', mensaje: 'Escriba un correo válido', validar: (valor) => CORREO_VALIDO.test(valor || '') },
+    {
+      campo: 'password',
+      mensaje: 'La contraseña debe tener al menos 6 caracteres',
+      validar: (valor) => String(valor || '').length >= 6,
+    },
+  ]
+}
+
+// Solo se envía lo que cada caso puede cambiar (el backend también lo restringe)
+function datosAEnviar() {
+  const f = formulario.value
+  if (!useUsuario.esAdmin) return { nombre: f.nombre, cedula: f.cedula }
+
+  const comunes = {
+    nombre: f.nombre,
+    cedula: f.cedula,
+    perfil: f.perfil,
+    ciudad_id: f.ciudad_id,
+    contrato: f.contrato,
+  }
+  return esEdicion.value ? comunes : { ...comunes, email: f.email.toLowerCase(), password: f.password }
+}
+
+async function guardar() {
+  if (!validarRequeridos(formulario.value, reglasValidacion())) return
+
+  const datos = datosAEnviar()
+  try {
+    if (esEdicion.value) {
+      await useUsuario.putUsuarios(formulario.value.email, datos)
+      // Si editó su propia cuenta, actualiza el nombre de la sesión
+      if (esMiCuenta(formulario.value)) {
+        useUsuario.user = { ...useUsuario.user, nombre: datos.nombre, cedula: datos.cedula }
+      }
+    } else {
+      await useUsuario.postUsuario(datos)
+    }
+    mostrarFormulario.value = false
+    mostrarDetalle.value = false
+    resetear()
+    await cargar()
+  } catch {
+    // el store ya notificó; el formulario queda abierto para corregir
   }
 }
 
 onMounted(() => {
-  cargarUsuarios()
-  cargarPlacas()
-})
-
-const isActive = computed({
-  get: () => detallesUsuario.value && detallesUsuario.value.estado === 'activo',
-  set: () => {},
-})
-
-const cambiarEstado = async () => {
-  try {
-    if (detallesUsuario.value.estado === 'activo') {
-      await useUsuario.putInactivarUsuario(detallesUsuario.value.email)
-      detallesUsuario.value.estado = 'inactivo'
-    } else {
-      await useUsuario.putActivarUsuario(detallesUsuario.value.email)
-      detallesUsuario.value.estado = 'activo'
-    }
-  } catch (error) {
-    console.error('Error al cambiar estado del usuario:', error)
-  }
-}
-
-function resetearFormulario() {
-  formulario.value = { ...estadoInicial }
-  accion.value = 1
-  salariobaseFormatted.value = ''
-  ssoFormatted.value = ''
-}
-
-async function abrirCalcularNomina() {
-  mesNomina.value = new Date().toISOString().slice(0, 7) // default mes actual
-  calculoNomina.value = null
-  dialogNomina.value = true
-}
-
-async function calcularNomina() {
-  if (!mesNomina.value) {
-    mostrarMensajeError('Seleccione un mes')
-    return
-  }
-  cargandoNomina.value = true
-  try {
-    const res = await useNomina.calcularNomina(detallesUsuario.value.email, mesNomina.value)
-    calculoNomina.value = res?.resultado || null
-  } catch (e) {
-    mostrarMensajeError('Error al calcular nómina')
-    console.error('Error al calcular nómina:', e)
-  } finally {
-    cargandoNomina.value = false
-  }
-}
-
-async function aprobarNomina() {
-  cargandoNomina.value = true
-  try {
-    await useNomina.postAprobarNomina(detallesUsuario.value.email, { mes: mesNomina.value })
-    dialogNomina.value = false
-    calculoNomina.value = null
-  } catch (e) {
-    mostrarMensajeError('Error al aprobar nómina')
-    console.error('Error al aprobar nómina:', e)
-  } finally {
-    cargandoNomina.value = false
-  }
-}
-
-async function pagarSalario() {
-  if (!mesNomina.value) {
-    mostrarMensajeError('Seleccione un mes')
-    return
-  }
-  cargandoNomina.value = true
-  try {
-    await useNomina.postPagarSalario(detallesUsuario.value.email, { mes: mesNomina.value })
-  } catch (e) {
-    mostrarMensajeError('Error al pagar salario')
-    console.error('Error al pagar salario:', e)
-  } finally {
-    cargandoNomina.value = false
-  }
-}
-
-function formatearPesos(valor) {
-  const num = parseFloat(valor) || 0
-  return num.toLocaleString('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-  })
-}
-
-function formatFecha(fecha) {
-  if (!fecha) return ''
-  return new Date(fecha).toLocaleDateString('es-CO', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function iniciales(nombre) {
-  if (!nombre) return '?'
-  return nombre
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-}
-
-function colorPerfil(perfil) {
-  const map = {
-    administrador: 'primary',
-    propietario: 'purple',
-    conductor: 'teal',
-  }
-  return map[perfil] || 'grey'
-}
-
-function formatPeso(valor) {
-  if (!valor) return '-'
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    maximumFractionDigits: 0,
-  }).format(valor)
-}
-
-defineOptions({
-  name: 'UsuariosPage',
+  storeCiudades.obtenerCiudades()
+  cargar()
 })
 </script>
 
 <style scoped>
-.placa-badge {
-  background: #111827;
-  color: white;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-family: monospace;
+.lista-con-fab {
+  padding-bottom: 80px;
 }
 
-.metrica-chip {
-  background: #f9fafb;
-  border-radius: 8px;
-  padding: 8px 10px;
-  min-width: 0;
-}
-.metrica-chip.rendimiento-malo {
-  background: #fef2f2;
-}
-.metrica-chip.rendimiento-bueno {
-  background: #f0fdf4;
-}
-.metrica-label {
-  font-size: 10px;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
-}
-.metrica-valor {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.mi-perfil {
+  max-width: 480px;
+  margin: 0 auto;
 }
 
-.filter-bar {
-  background: white;
+.mi-perfil__tarjeta {
   border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 12px;
+  background: #fff;
 }
 
-.filter-scroll {
-  overflow-x: auto;
-  flex-wrap: nowrap;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.filter-scroll::-webkit-scrollbar {
-  display: none;
+.toggle-borde {
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.filter-chip {
-  border-radius: 999px !important;
-  font-size: 13px;
-  flex-shrink: 0;
-}
-
-.cliente-card {
-  border-radius: 12px !important;
-  transition: border-color 0.15s;
-}
-.cliente-card:active {
-  opacity: 0.85;
-}
-
-.avatar-chip {
-  width: 40px;
-  height: 40px;
+.fila-activacion {
+  background: #f5f6f8;
   border-radius: 10px;
-  background: #eff6ff;
-  color: #1e50a2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  flex-shrink: 0;
-  letter-spacing: 0.5px;
-}
-
-.placa-badge-lg {
-  background: #111827;
-  color: white;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  padding: 6px 20px;
-  border-radius: 8px;
-  font-family: monospace;
-}
-
-.detalle-fila {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-.detalle-fila:last-child {
-  border-bottom: none;
-}
-.detalle-label {
-  font-size: 13px;
-  color: #9ca3af;
-}
-.detalle-valor {
-  font-size: 13px;
-  font-weight: 500;
-  color: #111827;
-  text-align: right;
-  max-width: 60%;
-}
-
-.usuario-card {
-  border: 1px solid #e5e7eb !important;
-  border-radius: 12px !important;
-  transition: border-color 0.15s;
-}
-.usuario-card:active {
-  opacity: 0.85;
+  padding: 10px 12px;
 }
 </style>

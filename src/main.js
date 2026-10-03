@@ -9,7 +9,7 @@ import '@quasar/extras/material-icons/material-icons.css'
 import Swal from 'sweetalert2';
 
 axios.defaults.baseURL = "http://localhost:4000/";
-// axios.defaults.baseURL = "https://backend-app-ljc.onrender.com";
+// axios.defaults.baseURL = "https://backend-app-canino.onrender.com";
 
 let requestsPending = 0;
 
