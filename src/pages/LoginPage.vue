@@ -11,14 +11,18 @@
           <div class="inputbox password-box">
             <input :type="passwordFieldType" required v-model="passwordLogin" />
             <label for="">Contraseña</label>
-            <i
-              :class="['eye-icon', passwordVisible ? 'fas fa-eye-slash' : 'fas fa-eye']"
+            <q-icon
+              :name="passwordVisible ? 'visibility_off' : 'visibility'"
+              class="eye-icon"
+              size="20px"
               @click="togglePasswordVisibility"
-            ></i>
+            />
           </div>
           <button type="submit">Iniciar</button>
           <div class="register"></div>
-          <button class="btrecuperar" @click="activador()">¿Olvidaste la contraseña?</button>
+          <button type="button" class="btrecuperar" @click="activador()">
+            ¿Olvidaste la contraseña?
+          </button>
         </form>
       </section>
       <div class="recuperarcontrasena" v-if="vifRecontrasena">
@@ -107,9 +111,7 @@ const iniciar = async () => {
   try {
     const res = await UseUsuario.login(email.value, passwordLogin.value)
     if (res && res.status === 200) {
-      router.push('/IndexPage')
-    } else {
-      mostrarMensajeError('Correo o contraseña incorrectos')
+      router.replace({ name: 'HomePage' })
     }
   } catch (error) {
     console.log(error)
@@ -164,6 +166,10 @@ async function cambiarPassword() {
     mostrarMensajeError('Las contraseñas no coinciden')
     return
   }
+  if (nuevaPassword.value.length < 6) {
+    mostrarMensajeError('La contraseña debe tener al menos 6 caracteres')
+    return
+  }
   const res = await UseUsuario.cambiarPassword(
     emailrecuperador.value,
     codigoIngresado.value,
@@ -215,8 +221,7 @@ defineOptions({ name: 'LoginPage' })
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: url('https://i.postimg.cc/XqhbgbPB/sevicanino.png')
-    no-repeat center;
+  background: url('https://i.postimg.cc/XqhbgbPB/sevicanino.png') no-repeat center;
   background-size: cover;
 }
 

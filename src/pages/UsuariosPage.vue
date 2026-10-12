@@ -99,14 +99,19 @@
           class="full-width q-mt-lg"
           @click="abrirEditar(perfil)"
         />
-        <!-- El botón de cambiar contraseña se agrega cuando hagamos el tema del hash -->
-
+<q-btn
+  outline rounded no-caps color="primary" icon="lock"
+  label="Cambiar mi contraseña"
+  class="full-width q-mt-sm"
+  @click="abrirPassword()"
+/>
         <div class="text-caption text-grey-7 text-center q-mt-md">
           Para cambiar su correo, ciudad o contrato, comuníquese con el administrador.
         </div>
       </template>
     </div>
 
+    <!-- Detalle (admin) -->
     <!-- Detalle (admin) -->
     <DialogoDetalle
       v-model="mostrarDetalle"
@@ -136,6 +141,18 @@
           @update:model-value="cambiarEstado"
         />
       </div>
+
+      <template #acciones>
+        <q-btn
+          v-if="detalle"
+          flat
+          no-caps
+          color="primary"
+          icon="lock_reset"
+          :label="esMiCuenta(detalle) ? 'Cambiar contraseña' : 'Restablecer contraseña'"
+          @click="abrirPassword(esMiCuenta(detalle) ? null : detalle)"
+        />
+      </template>
     </DialogoDetalle>
 
     <!-- Formulario -->
@@ -244,6 +261,8 @@
     <q-page-sticky v-if="useUsuario.esAdmin" position="bottom-right" :offset="[18, 18]">
       <q-btn fab icon="person_add" color="primary" aria-label="Crear usuario" @click="abrirCrear" />
     </q-page-sticky>
+
+    <DialogoCambiarPassword v-model="mostrarPassword" :email="passwordPara.email" :nombre="passwordPara.nombre" />
   </q-page>
 </template>
 
@@ -256,6 +275,7 @@ import { FILTROS_USUARIOS } from '../composables/filtrosusuarios'
 import { PERFILES } from '../composables/catalogos'
 import { capitalizar, iniciales, normalizar } from '../utils/texto'
 import { validarRequeridos } from '../utils/formulario'
+import DialogoCambiarPassword from '../components/DialogoCambiarPassword.vue'
 
 import BarraFiltros from '../components/BarraFiltros.vue'
 import EncabezadoLista from '../components/EncabezadoLista.vue'
@@ -282,6 +302,13 @@ const perfil = computed(() => {
   if (useUsuario.esAdmin) return null
   return usuarios.value[0] || (useUsuario.user?.email ? useUsuario.user : null)
 })
+const mostrarPassword = ref(false)
+const passwordPara = ref({ email: '', nombre: '' })
+
+function abrirPassword(usuario = null) {
+  passwordPara.value = usuario ? { email: usuario.email, nombre: usuario.nombre } : { email: '', nombre: '' }
+  mostrarPassword.value = true
+}
 
 async function cargar() {
   cargando.value = true

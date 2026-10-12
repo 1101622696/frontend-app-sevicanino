@@ -1,17 +1,15 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    
     repositories {
         google()
         mavenCentral()
     }
+
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.1.4'
+        classpath 'com.android.tools.build:gradle:8.5.1'
         classpath 'com.google.gms:google-services:4.4.0'
-classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10"
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10"
     }
 }
 
@@ -21,8 +19,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }  // AGREGAR ESTA LÍNEA
+        maven { url 'https://jitpack.io' }
     }
+
     plugins.withId('kotlin-android') {
         kotlin {
             jvmToolchain(17)
@@ -30,10 +29,12 @@ allprojects {
     }
 }
 
-ext {
-    minSdkVersion = 23       // Usar tu versión mínima
-    compileSdkVersion = 35   // Usar tu versión de compilación
-    targetSdkVersion = 35  // Usar tu versión objetivo
+subprojects {
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+        }
+    }
 }
 
 task clean(type: Delete) {

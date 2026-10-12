@@ -4,63 +4,97 @@ import { createPinia } from 'pinia'
 import { Quasar, Notify } from 'quasar'
 import App from './App.vue'
 import router from './router'
-import axios from "axios";
+import axios from 'axios'
 import '@quasar/extras/material-icons/material-icons.css'
-import Swal from 'sweetalert2';
+import Swal from 'sweetalert2'
+import { useStoreUsuarios } from './stores/usuarios'
 
-axios.defaults.baseURL = "http://localhost:4000/";
-// axios.defaults.baseURL = "https://backend-app-canino.onrender.com";
+// axios.defaults.baseURL = 'http://localhost:4000/'
+axios.defaults.baseURL = 'https://backend-app-canino.onrender.com'
+// Render gratis tarda en despertar; más de 60 s ya es un problema de red
+axios.defaults.timeout = 60000
 
-let requestsPending = 0;
+const pinia = createPinia()
+pinia.use(piniaPluginPersistedstate)
 
-axios.interceptors.request.use((request) => {
-  requestsPending ++;
+// ─────────────────────────────────────────────────────────────
+// Spinner global. Las peticiones con { sinSpinner: true } no lo muestran
+// (refresco de sesión al abrir la app, actualizaciones en segundo plano).
+// ─────────────────────────────────────────────────────────────
+let pendientes = 0
 
-if (requestsPending == 1) {
-  Swal.fire({
-    didOpen: () => {
-      Swal.showLoading();
-    },
-    allowOutsideClick: false,
-    allowEscakey: false,
-    allowEnterkey: false,
-  });
+const mostrarSpinner = () => {
+  pendientes++
+  if (pendientes === 1) {
+    Swal.fire({
+      didOpen: () => Swal.showLoading(),
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      allowEnterKey: false,
+    })
+  }
 }
-return request;
-});
+
+const ocultarSpinner = () => {
+  pendientes = Math.max(0, pendientes - 1)
+  if (pendientes === 0) Swal.close()
+}
+
+axios.interceptors.request.use((config) => {
+  if (!config.sinSpinner) mostrarSpinner()
+  return config
+})
+
+// ─────────────────────────────────────────────────────────────
+// Cierre de sesión SOLO cuando el backend dice que el token no sirve (401).
+// Errores de red, 503 (hoja no disponible) o 500 no cierran la sesión.
+// ─────────────────────────────────────────────────────────────
+let cerrandoSesion = false
 
 axios.interceptors.response.use(
-function (response){
-  requestsPending--;
+  (response) => {
+    if (!response.config?.sinSpinner) ocultarSpinner()
+    return response
+  },
+  (error) => {
+    if (!error.config?.sinSpinner) ocultarSpinner()
 
-  if (requestsPending == 0){
-    Swal.close();
-  }
-  return response;
-},
-function (error) {
-requestsPending--;
-if(requestsPending == 0) {
-  Swal.close();
-}
+    const estado = error.response?.status
+    const esLogin = error.config?.url?.includes('usuarios/login')
 
-// if (error.response.status == 401) {
-//  router .push('/')
-// }
+    if (estado === 401 && !esLogin && !cerrandoSesion) {
+      cerrandoSesion = true
+      const usuario = useStoreUsuarios(pinia)
+      if (usuario.token) {
+        Notify.create({
+          type: 'warning',
+          message: error.response?.data?.msg || 'Su sesión terminó. Inicie sesión de nuevo.',
+        })
+      }
+      usuario.cerrarSesion()
+      router.replace('/').finally(() => {
+        cerrandoSesion = false
+      })
+    } else if (estado === 503) {
+      Notify.create({
+        type: 'warning',
+        message: error.response?.data?.msg || 'El servidor no está disponible. Intente de nuevo en un momento.',
+      })
+    } else if (!error.response && !esLogin) {
+      Notify.create({
+        type: 'warning',
+        message: 'Sin conexión con el servidor. Revise su internet e intente de nuevo.',
+      })
+    }
 
-if (error.response && error.response.status === 401) {
-  router.push('/')
-}
+    return Promise.reject(error)
+  },
+)
 
-return Promise.reject(error);
-});
-
-const pinia =createPinia()
-pinia.use(piniaPluginPersistedstate)
 const myApp = createApp(App)
-myApp.use(pinia)  
+myApp.use(pinia)
 myApp.use(router)
-myApp.use(Quasar,  {
+myApp.use(Quasar, {
   plugins: { Notify },
   config: {
     notify: {
@@ -68,10 +102,9 @@ myApp.use(Quasar,  {
       timeout: 2500,
       textColor: 'white',
       actions: [{ icon: 'close', color: 'white' }],
-      color:"red"
+      color: 'red',
     },
   },
 })
-
 
 myApp.mount('#app')

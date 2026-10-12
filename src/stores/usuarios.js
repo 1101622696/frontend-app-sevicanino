@@ -6,6 +6,7 @@ import useNotifications from '../composables/useNotifications'
 import { useStoreCaninos } from './caninos'
 import { useStoreCiudades } from './ciudades'
 import { useStoreDashboard } from './dashboard'
+import { limpiarCacheArchivos } from '../composables/useVisorArchivos'
 
 export const useStoreUsuarios = defineStore(
   'Usuarios',
@@ -16,8 +17,9 @@ export const useStoreUsuarios = defineStore(
     const user = ref({})
     const perfile = ref('')
     const correo = ref('')
-   const isAuthenticated = computed(() => Boolean(token.value))
-    // ── Sesión: úsalos en las páginas en vez de leer user.value a mano ──
+
+    // ── Sesión ──
+    const isAuthenticated = computed(() => Boolean(token.value))
     const esAdmin = computed(() => (user.value?.perfil || perfile.value) === 'administrador')
     const ciudadUsuario = computed(() => user.value?.ciudad_id || '')
     const nombreUsuario = computed(() => user.value?.nombre || '')
@@ -28,11 +30,10 @@ export const useStoreUsuarios = defineStore(
     const notificarError = (error, mensajePorDefecto) => {
       Notify.create({
         type: 'negative',
-        message: error.response?.data?.mensaje || mensajePorDefecto,
+        message: error.response?.data?.mensaje || error.response?.data?.error || mensajePorDefecto,
       })
     }
 
-    // Para crear / editar / activar / inactivar
     const enviar = async (metodo, url, data, mensajeOk, mensajeError) => {
       loading.value = true
       try {
@@ -48,8 +49,19 @@ export const useStoreUsuarios = defineStore(
       }
     }
 
+    const guardarUsuarioSesion = (datos) => {
+      if (!datos) return
+      user.value = { ...user.value, ...datos }
+      perfile.value = datos.perfil || perfile.value
+      correo.value = datos.email || correo.value
+    }
+
+    const setToken = (nuevo) => {
+      token.value = nuevo
+      localStorage.setItem('x-token', nuevo)
+    }
+
     // ── Lecturas ──
-    // Admin: todos. Manejador: el backend devuelve solo su propio usuario.
     const listarUsuario = async () => {
       loading.value = true
       try {
@@ -78,145 +90,91 @@ export const useStoreUsuarios = defineStore(
       }
     }
 
-    // Se deja por compatibilidad con UsuariosPage; hace lo mismo que obtenerUsuariosPorEmail
     const listardatosUsuario = (email) => obtenerUsuariosPorEmail(email)
 
-    const obtenerUsuariosFiltrados = async (tipo, valor) => {
-      loading.value = true
+    /**
+     * Al abrir la app: trae perfil, ciudad y nombre actuales desde la hoja.
+     * Si el admin cambió algo, se refleja sin volver a iniciar sesión.
+     * Sin spinner y sin avisos: si falla por red, la sesión sigue igual.
+     * Si el token ya no sirve (401), el interceptor de main.js cierra la sesión.
+     */
+    const refrescarSesion = async () => {
+      if (!token.value) return
       try {
-        const { data } = await axios.get('api/usuarios/filtrados', {
-          params: { tipo, valor },
-          headers: headers(),
-        })
-        return data
-      } catch (error) {
-        console.error(`No se pudo obtener los usuarios filtrados por ${tipo}:`, error)
-        throw error
-      } finally {
-        loading.value = false
+        const { data } = await axios.get('api/usuarios/yo', { headers: headers(), sinSpinner: true })
+        guardarUsuarioSesion(data?.usuario)
+      } catch {
+        // red o 503: se conserva la sesión guardada
       }
     }
 
     // ── Escrituras ──
     const postUsuario = (data) =>
-      enviar(
-        'post',
-        'api/usuarios/crear',
-        data,
-        'Usuario creado correctamente',
-        'Error al registrar usuario',
-      )
+      enviar('post', 'api/usuarios/crear', data, 'Usuario creado correctamente', 'Error al registrar usuario')
 
     const putUsuarios = (email, data) =>
-      enviar(
-        'put',
-        `api/usuarios/editar/${email}`,
-        data,
-        'Usuario actualizado correctamente',
-        'Error al actualizar usuario',
-      )
+      enviar('put', `api/usuarios/editar/${email}`, data, 'Usuario actualizado correctamente', 'Error al actualizar usuario')
 
     const putActivarUsuario = (email) =>
-      enviar(
-        'put',
-        `api/usuarios/activar/${email}`,
-        {},
-        'Usuario activado',
-        'Error al activar usuario',
-      )
+      enviar('put', `api/usuarios/activar/${email}`, {}, 'Usuario activado', 'Error al activar usuario')
 
     const putInactivarUsuario = (email) =>
-      enviar(
-        'put',
-        `api/usuarios/inactivar/${email}`,
-        {},
-        'Usuario inactivado',
-        'Error al inactivar usuario',
-      )
+      enviar('put', `api/usuarios/inactivar/${email}`, {}, 'Usuario inactivado', 'Error al inactivar usuario')
 
-    const putUsuariospassword = async (email, data) => {
-      loading.value = true
-      try {
-        return await axios.put(`api/usuarios/editarpassword/${email}`, data, { headers: headers() })
-      } catch (error) {
-        console.log('No se pudo actualizar la contraseña', error)
-        return error
-      } finally {
-        loading.value = false
-      }
+    /** El usuario cambia su propia contraseña. Recibe un token nuevo para no cerrar sesión aquí */
+    const cambiarMiPassword = async (passwordActual, passwordNueva) => {
+      const { data } = await enviar(
+        'put',
+        `api/usuarios/editarpassword/${emailUsuario.value}`,
+        { password_actual: passwordActual, password_nueva: passwordNueva },
+        null,
+        'No se pudo cambiar la contraseña',
+      )
+      if (data?.token) setToken(data.token)
+      Notify.create({ message: data?.mensaje || 'Contraseña actualizada', color: 'positive', position: 'bottom' })
+      return data
+    }
+
+    /** El admin restablece la contraseña de otro usuario (se le cierran sus sesiones) */
+    const restablecerPassword = async (email, passwordNueva) => {
+      const { data } = await enviar(
+        'put',
+        `api/usuarios/editarpassword/${email}`,
+        { password_nueva: passwordNueva },
+        null,
+        'No se pudo restablecer la contraseña',
+      )
+      Notify.create({ message: data?.mensaje || 'Contraseña restablecida', color: 'positive', position: 'bottom' })
+      return data
     }
 
     // ── Notificaciones push ──
     const registrarTokenFCM = async (tokenFCM) => {
       try {
-        loading.value = true
         const tokenActual = localStorage.getItem('fcm-token')
-
-        if (tokenActual === tokenFCM) {
-          console.log('El token FCM ya está registrado')
-          return { success: true }
-        }
-
-        localStorage.setItem('fcm-token', tokenFCM)
+        if (tokenActual === tokenFCM) return { success: true }
 
         const response = await axios.post(
           'api/usuarios/registrar-token-fcm',
           { token: tokenFCM },
-          { headers: { 'x-token': localStorage.getItem('x-token') } },
+          { headers: headers(), sinSpinner: true },
         )
-
-        Notify.create({
-          message: 'Notificaciones activadas correctamente',
-          color: 'positive',
-          position: 'bottom',
-        })
-
+        localStorage.setItem('fcm-token', tokenFCM)
         return response.data
       } catch (error) {
-        Notify.create({
-          type: 'negative',
-          message: error.response?.data?.msg || 'Error al registrar notificaciones',
-        })
-        console.error(error)
+        console.error('Error al registrar notificaciones', error)
         return { success: false }
-      } finally {
-        loading.value = false
       }
     }
 
-    // ── Sesión ──
-    const setToken = (newToken) => {
-      token.value = newToken
-      localStorage.setItem('x-token', newToken)
-    }
-
-    const eliminarToken = () => {
-      token.value = ''
-      localStorage.removeItem('x-token')
-      localStorage.removeItem('usuarios-store')
-      user.value = {}
-      perfile.value = ''
-      correo.value = ''
-      usuarios.value = []
-
-      // Si otro usuario inicia sesión en el mismo celular, no debe ver el caché del anterior
-      useStoreCaninos().limpiar()
-      useStoreCiudades().limpiar()
-      useStoreDashboard().limpiar()
-    }
-
-    // login, validaremail, recuperación y cambio de contraseña conservan `return error`
-    // porque LoginPage depende de ese comportamiento. Se ajustan cuando hagamos el tema del hash.
+    // ── Login / logout ──
+    // login sigue devolviendo el error (en vez de lanzarlo) porque LoginPage depende de eso
     const login = async (email, password) => {
       try {
-        const res = await axios.post(
-          'api/usuarios/login',
-          { email, password },
-          {
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            withCredentials: true,
-          },
-        )
+        const res = await axios.post('api/usuarios/login', {
+          email: String(email || '').trim().toLowerCase(),
+          password,
+        })
 
         setToken(res.data.token)
         user.value = res.data.usuario
@@ -224,15 +182,14 @@ export const useStoreUsuarios = defineStore(
         correo.value = res.data.usuario.email
 
         Notify.create({
-          message: 'Bienvenido ' + res.data.usuario.nombre,
+          message: `Bienvenido, ${res.data.usuario.nombre}`,
           color: 'positive',
           position: 'top',
         })
 
         setTimeout(async () => {
           try {
-            const { inicializarNotificaciones } = useNotifications()
-            await inicializarNotificaciones()
+            await useNotifications().inicializarNotificaciones()
           } catch (error) {
             console.log('Error al inicializar notificaciones:', error)
           }
@@ -240,34 +197,43 @@ export const useStoreUsuarios = defineStore(
 
         return res
       } catch (error) {
-        console.error('Error en el login:', error)
-        const errorMessage =
-          error.response?.data?.errors?.[0]?.msg ||
-          error.response?.data?.error ||
-          'Usuario o contraseña incorrecta'
+        const mensaje = !error.response
+          ? 'No hay conexión con el servidor. Si es la primera vez del día, espere unos segundos e intente de nuevo.'
+          : error.response.data?.errors?.[0]?.msg || error.response.data?.error || 'Correo o contraseña incorrectos'
 
-        Notify.create({ type: 'negative', message: errorMessage })
+        Notify.create({ type: 'negative', message: mensaje })
         return error
       }
     }
 
-    const validaremail = async (email) => {
-      try {
-        const res = await axios.get(`api/usuarios/email?email=${email}`)
-        localStorage.setItem('x-token', res.data.token)
-        return res
-      } catch (error) {
-        console.error('No se pudo obtener la informacion requerida', error)
-        return error
-      }
+    /** Borra la sesión y todos los cachés (si otro usuario entra en el mismo celular, no ve nada del anterior) */
+    const cerrarSesion = () => {
+      token.value = ''
+      user.value = {}
+      perfile.value = ''
+      correo.value = ''
+      usuarios.value = []
+      localStorage.removeItem('x-token')
+      localStorage.removeItem('usuarios-store')
+      localStorage.removeItem('email')
+      localStorage.removeItem('fcm-token')
+
+      useStoreCaninos().limpiar()
+      useStoreCiudades().limpiar()
+      useStoreDashboard().limpiar()
+      limpiarCacheArchivos()
     }
 
+    // Nombre anterior, por compatibilidad con código que aún lo llame
+    const eliminarToken = cerrarSesion
+
+    // ── Recuperación de contraseña (sin sesión) ──
     const solicitarRecuperacion = async (email) => {
       loading.value = true
       try {
         return await axios.post('api/usuarios/recuperar-password', { email })
       } catch (error) {
-        notificarError(error, 'Error al enviar código')
+        notificarError(error, 'Error al enviar el código')
         return error
       } finally {
         loading.value = false
@@ -291,7 +257,7 @@ export const useStoreUsuarios = defineStore(
       try {
         return await axios.post('api/usuarios/cambiar-password', { email, codigo, nuevaPassword })
       } catch (error) {
-        notificarError(error, 'Error al cambiar contraseña')
+        notificarError(error, 'Error al cambiar la contraseña')
         return error
       } finally {
         loading.value = false
@@ -306,42 +272,39 @@ export const useStoreUsuarios = defineStore(
       user,
       perfile,
       correo,
-      isAuthenticated,
       // sesión
+      isAuthenticated,
       esAdmin,
       ciudadUsuario,
       nombreUsuario,
       emailUsuario,
+      refrescarSesion,
       // lecturas
       listarUsuario,
       obtenerUsuariosPorEmail,
       listardatosUsuario,
-      obtenerUsuariosFiltrados,
       // escrituras
       postUsuario,
       putUsuarios,
       putActivarUsuario,
       putInactivarUsuario,
-      putUsuariospassword,
+      cambiarMiPassword,
+      restablecerPassword,
       registrarTokenFCM,
       // auth
       login,
-      validaremail,
-      verificarCodigo,
-      solicitarRecuperacion,
-      cambiarPassword,
+      cerrarSesion,
       eliminarToken,
+      solicitarRecuperacion,
+      verificarCodigo,
+      cambiarPassword,
     }
   },
   {
-    // Sintaxis de pinia-plugin-persistedstate v4: `pick` (antes `paths`) y `afterHydrate` (antes `afterRestore`)
     persist: {
       key: 'usuarios-store',
       storage: localStorage,
       pick: ['token', 'user', 'perfile', 'correo'],
-      afterHydrate: (ctx) => {
-        console.log('Store rehidratado:', ctx.store.perfile)
-      },
     },
   },
 )

@@ -39,7 +39,6 @@ import { useStoreUsuarios } from '../stores/usuarios'
 import useNotifications from 'src/composables/useNotifications'
 import { useRouter } from 'vue-router'
 import VisorArchivos from 'components/VisorArchivos.vue'
-import { limpiarCacheArchivos } from '../composables/useVisorArchivos'
 
 const router = useRouter()
 const useUsuario = useStoreUsuarios()
@@ -58,19 +57,15 @@ const filteredLinks = computed(() => {
 })
 
 onMounted(async () => {
+  useUsuario.refrescarSesion() // perfil y ciudad al día, en segundo plano
   if (useUsuario.isAuthenticated) {
-    console.log('Usuario autenticado, intentando inicializar notificaciones...')
-    const resultado = await inicializarNotificaciones()
-    console.log('Resultado inicialización:', resultado)
+    await inicializarNotificaciones()
   }
 })
 
 const logout = () => {
-  limpiarCacheArchivos()
-  useUsuario.eliminarToken()
-  localStorage.removeItem('email')
-  localStorage.removeItem('fcm-token')
-  router.push('/')
+  useUsuario.cerrarSesion()
+  router.replace('/')
 }
 
 defineOptions({

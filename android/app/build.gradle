@@ -5,7 +5,7 @@ apply plugin: 'com.google.gms.google-services'
 
 android {
     namespace "com.misevicanino.app"
-    compileSdk 34
+    compileSdk 36
     defaultConfig {
         applicationId "com.misevicanino.app"
         minSdkVersion rootProject.ext.minSdkVersion
